@@ -1,0 +1,386 @@
+---
+title: "Classification tree"
+author: "Yaiza Bravo"
+date: "2023-04-14"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+and
+
+```{r}
+data$and <- sapply(texts, function(x) str_count(x, pattern = "\\b(and)\\b"))
+data$and <- data$and / data$lengthw
+```
+
+the
+
+```{r}
+data$the <- sapply(texts, function(x) str_count(x, pattern = "\\b(the)\\b"))
+data$the <- data$the / data$lengthw
+```
+
+```{r}
+# install.packages(c("rpart", "rpart.plot"))
+```
+
+```{r}
+library(tidyverse)
+library(DescTools)
+library(rpart)
+library(rpart.plot)
+library(caret)
+```
+
+```{r}
+library(dplyr)
+data <- select(data, -c(id, source, year, sent, lengthl, lengthw, pgf, nstc))
+```
+
+
+# Classification Tree
+
+```{r}
+set.seed(1649)
+suppressMessages(library(caret))
+
+data.tree = train(outcome ~ ., 
+                  data=data, 
+                  method="rpart", 
+                  trControl = trainControl(method = "cv"))
+
+data.tree
+# class(data.tree$finalModel)
+# summary(data.tree$finalModel)
+```
+
+```{r}
+library(rpart.plot)
+rpart.plot(data.tree$finalModel, uniform=TRUE,
+           main="Classification Tree")
+```
+
+```{r}
+ggplot(data.tree)
+data.tree$bestTune
+data.tree$finalModel
+```
+
+cp = 0.075
+
+```{r}
+set.seed(1649)
+suppressMessages(library(caret))
+data.tree1 <- train(outcome ~ ., 
+                   data = data, 
+                   method = "rpart", 
+                   trControl = trainControl(method = "cv"), 
+                   tuneGrid = data.frame(cp = data.tree$bestTune))
+data.tree1
+
+# summary(data.tree1$finalModel)
+
+rpart.plot(data.tree1$finalModel, uniform=TRUE,
+           main="Classification Tree with cp = 0.075")
+```
+
+```{r}
+predictions <- predict(data.tree1, newdata = data)
+
+cm <- confusionMatrix(predictions, data$outcome)
+kappa <- cm$overall['Kappa']
+print(kappa)
+
+
+library(ROCR)
+library(pROC)
+
+pred1 <- predict(data.tree1, newdata = data, type = "prob")[, 2]
+
+roc_obj1 <- roc(data$outcome, pred1)
+
+auc1 <- auc(roc_obj1)
+print(auc1)
+```
+
+```{r}
+cm1 <- confusionMatrix(data.tree1)
+cm1
+```
+
+```{r}
+34.4 / (34.4 + 5) # ppv
+34.4 / (34.4 + 15.6) # recall
+```
+
+cp = 0.001
+
+```{r}
+set.seed(1649)
+suppressMessages(library(caret))
+data.tree2 <- train(outcome ~ ., 
+                   data = data, 
+                   method = "rpart", 
+                   trControl = trainControl(method = "cv"), 
+                   tuneGrid = data.frame(cp = 0.001))
+
+rpart.plot(data.tree2$finalModel, uniform=TRUE,
+           main="Classification Tree with cp = 0.001")
+```
+
+# Random Forest 
+
+```{r}
+set.seed(1649)
+library(caret)
+library(randomForest)
+
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 5, 
+                     repeats = 10)
+
+rf_model <- train(outcome ~ ., 
+                  data = data, 
+                  method = "rf", 
+                  trControl = ctrl, 
+                  tuneLength = 5)
+
+print(rf_model)
+class(rf_model$finalModel)
+varImp(rf_model)
+```
+
+```{r}
+threshold <- 0.2 
+relevant_vars <- ImpData[ImpData$MeanDecreaseAccuracy > threshold, ]
+
+relevant_vars <- relevant_vars[order(relevant_vars$MeanDecreaseAccuracy, decreasing = TRUE), ]
+
+num_vars_to_show <- 25 
+relevant_vars <- head(relevant_vars, num_vars_to_show)
+
+ggplot(relevant_vars, aes(x = Var.Names, y = MeanDecreaseAccuracy)) +
+  geom_segment(aes(x = Var.Names, xend = Var.Names, y = 0, yend = MeanDecreaseAccuracy), color = "skyblue") +
+  geom_point(aes(size = MeanDecreaseAccuracy), color = "blue", alpha = 0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+
+```{r}
+predictions <- predict(rf_model, newdata = data)
+probabilities <- predict(rf_model, newdata = data, type = "prob")
+
+library(pROC)
+roc_obj2 <- roc(data$outcome, probabilities[, "1"])
+auc <- auc(roc_obj2)
+
+print(auc)
+```
+
+```{r}
+confusionMatrix(rf_model)
+```
+
+```{r}
+38.4 / (38.4 + 5.6) # ppv
+38.4 / (38.4 + 11.6) # recall
+```
+
+
+# Logistic Model
+
+```{r}
+library(stepPlr)
+set.seed(1649)
+
+ctrl <- trainControl(method = "cv", number = 5)
+
+tuning <- expand.grid(lambda = c(10 ^ seq(-1, -4, length = 4)),
+                      cp = "bic")
+model <- train(outcome ~ ., data = data, method = "plr", tuneGrid = tuning, trControl = ctrl)
+
+summary(model)
+```
+
+```{r}
+predicts <- predict(model, newdata = data)
+
+confusion$overall["Kappa"]
+```
+
+```{r}
+probs <- predict(model, newdata = data, type = "prob")[, 2]
+roc(data$outcome, probs)$auc
+```
+
+```{r}
+confusionMatrix(model)
+```
+
+```{r}
+41.2 / (41.2 + 11.2) # ppv
+41.2 / (41.2 + 8.8) # recall
+```
+
+```{r}
+set.seed(1649)
+
+probabilities <- predict(model, newdata = data, type = "prob")
+
+roc <- roc(data$outcome, probabilities[, "1"])
+
+plot(roc, main = "Logistic model ROC curve")
+```
+
+# Support Vector Machines
+
+Lineal SVM:
+
+```{r}
+set.seed(1649)
+library(e1071)
+M=4
+accuracy.vector2 = 0:M
+num.supp.vect2 = 0:M
+
+cq=seq(1,100, M+1)
+
+for(i in 1:length(cq)){
+svm.model = svm(outcome ~ ., data = data, kernel = "linear", cost = cq[i], scale = T, probability = T)
+
+svm.pred <- predict(svm.model, newdata = data[,-1])
+
+t2<-table(svm.pred, data$outcome)
+n<-nrow(data)
+accuracy.vector2[i] <- (sum(diag(t2))/n)
+num.supp.vect2[i] = svm.model$tot.nSV
+
+cat(i, "accuracy:", accuracy.vector2[i], "number of support vectors = ", num.supp.vect2[i], "\n" )
+}
+```
+
+```{r}
+best_c_linear = cq[which.max(accuracy.vector2/ num.supp.vect2)]
+best_accuracy_linear = accuracy.vector2[which.max(accuracy.vector2/ num.supp.vect2)]
+best_accuracy_linear
+num.supp.vect2[which.max(accuracy.vector2/ num.supp.vect2)]
+best_c_linear
+```
+
+```{r}
+p <- 0.7          
+n <- dim(data)[1]          
+set.seed(1649)
+train.sel <- sample(c(FALSE,TRUE),n,rep=TRUE,prob=c(1-p,p))
+train <- data[train.sel,]
+test <- data[!train.sel,]
+```
+
+```{r}
+set.seed(1649)
+svm_2 = svm(outcome ~ ., data = train, kernel = "linear", cost = 41, scale = TRUE, probability=TRUE)
+
+confusionMatrix(predict(svm_2, newdata = test[,-1]),test$outcome) 
+```
+
+```{r}
+18/(18+4) # ppv
+18/(18+2) # recall
+```
+
+```{r}
+set.seed(1649)
+library(pROC)
+PRED <- predict(svm_2, newdata = test[,-1],probability = TRUE)
+# head(attr(PRED, "probabilities"))
+pred <- attr(PRED, "probabilities")[,2]
+roc2 <- roc(test$outcome,pred)
+```
+
+```{r}
+plot(roc2, main = "linear SVM ROC curve")
+```
+
+Radial SVM:
+
+```{r}
+M=4
+accuracy.vector3 = matrix(0, M+1, M+1)
+num.supp.vect3 = matrix(0, M+1, M+1)
+
+for(i in 0:M){
+  for(j in 0:M){
+svm.model2 = svm(outcome ~ ., data = data, kernel = "radial", cost = 10^i, gamma=10^(-j))
+
+svm.pred2 <- predict(svm.model2, newdata = data[,-1])
+
+t3<-table(svm.pred2, data$outcome)
+n2<-nrow(data)
+accuracy.vector3[i+1, j+1] <- (sum(diag(t3))/n)
+num.supp.vect3[i+1, j+1] = svm.model$tot.nSV
+
+cat(i, "-", j, "accuracy:", accuracy.vector3[i+1, j+1], "number of support vectors = ", num.supp.vect3[i+1, j+1], "\n" )
+  }
+}
+```
+
+```{r}
+df3 = as.data.frame(accuracy.vector3)
+rownames(df3)=10^(0:M)
+colnames(df3)=10^-(0:M)
+df3
+```
+
+```{r}
+which(as.matrix(df3)==max(df3), arr.ind=T)
+best_accuracy_radial = max(df3)
+```
+
+```{r}
+p <- 0.7              
+n <- dim(data)[1]           
+set.seed(1649)
+train.sel <- sample(c(FALSE,TRUE),n,rep=TRUE,prob=c(1-p,p))
+train <- data[train.sel,]
+test <- data[!train.sel,]
+```
+
+```{r}
+set.seed(1649)
+svm_3 = svm(outcome ~ ., data = train, kernel = "radial", cost = 1, gamma = 1, scale = TRUE, probability=TRUE)
+
+confusionMatrix(predict(svm_3, newdata = test[,-1]),test$outcome) 
+```
+
+```{r}
+20/(20+24) # ppv
+20/(20+0) # recall
+```
+
+```{r}
+set.seed(1649)
+library(pROC)
+PRED2 <- predict(svm_3, newdata = test[,-1],probability = TRUE)
+# head(attr(PRED, "probabilities"))
+pred2 <- attr(PRED2, "probabilities")[,2]
+roc3 <- roc(test$outcome,pred2)
+```
+
+```{r}
+plot(roc3, main = "radial SVM ROC curve")
+```
+
+
+
+```{r}
+plot(roc2, main = "Linear SVM vs Radial SVM ROC curves")
+plot(roc3, add = TRUE, col = "steelblue")
+legend("bottomright", legend = c("Linear SVM", "Radial SVM"), col = c("black", "steelblue"), lty = 1)
+```
