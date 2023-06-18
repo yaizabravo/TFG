@@ -1,0 +1,1058 @@
+---
+title: "EDA"
+author: "Yaiza Bravo"
+date:
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+database
+
+```{r setup_options, message=FALSE, warning=FALSE}
+library(readxl)
+data <- read_excel("C:/Users/yaiza/Desktop/TFG/Variables.xlsx", sheet = "Full 4") %>%
+  mutate_if(is.character, as.factor) %>%
+  mutate(outcome = as.factor(outcome))
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+
+data <- read_excel("C:/Users/yaiza/Desktop/TFG/Variables.xlsx", sheet = "Full 4") %>%
+  mutate_if(is.character, as.factor)
+``` 
+
+packages
+
+```{r setup,message=FALSE, warning=FALSE}
+library(openNLP)
+library(lintr)
+library(sentimentr)
+library(syuzhet)
+library(quanteda)
+library(stringr)
+library(tidyr)
+library(tm)
+library(udpipe)
+library(tidytext)
+library(wordcloud2)
+library(dplyr)
+library(SentimentAnalysis)
+library(spellcheckr)
+library(ggplot2)
+library(knitr)
+library(RColorBrewer)
+library(stargazer)
+```
+
+read texts and save them in tm format
+
+```{r}
+texts <- Corpus(DirSource("C:/Users/yaiza/Desktop/TFG/txt"))
+texts <- tm_map(texts, content_transformer(as.character))
+```
+
+----------------------------------------------------------------------------------------------------------------------------
+
+answer's length
+
+```{r}
+data$lengthl <- sapply(texts, function(x) nchar(x))  
+data$lengthw <- sapply(texts, function(x) str_count(x, boundary("word")))
+data$wordl <- data$lengthl / data$lengthw
+```
+
+
+sentiment analysis
+
+```{r}
+data$sent <- sapply(texts, function(x) (sentimentr::sentiment(x)$sentiment))
+data$sentm <- sapply(texts, function(x) mean(sentimentr::sentiment(x)$sentiment))
+data$sentsd <- sapply(texts, function(x) sd(sentimentr::sentiment(x)$sentiment))
+```
+
+
+repetition patterns (max frecuency rep)
+
+```{r}
+data$patt <- sapply(texts, function(x) {
+  nmax <- max(table(unlist(str_extract_all(as.character(x), "\\w+"))))
+  return(nmax)
+})
+data$patt <- data$patt / data$lengthw
+
+data$pattw <- sapply(texts, function(x) {
+  freq_table <- table(unlist(str_extract_all(as.character(x), "\\w+")))
+  word_with_max_freq <- names(freq_table)[which.max(freq_table)]
+  return(word_with_max_freq)
+})
+data <- data %>% 
+  mutate(pattw = as.factor(pattw))
+
+data$pattw2 <- sapply(texts, function(x) {
+  freq_table <- table(unlist(str_extract_all(as.character(x), "\\w+")))
+  freq_table_sorted <- sort(freq_table, decreasing = TRUE)
+  top_words <- names(freq_table_sorted)[1:15]
+  most_frequent_word <- names(freq_table)[which.max(freq_table)]
+  if (most_frequent_word %in% top_words) {
+    return(most_frequent_word)
+  } else {
+    return(top_words[1])
+  }
+})
+```
+
+
+personal pronouns
+
+```{r}
+data$pron <- sapply(texts, function(x) str_count(x, pattern = "\\b(I|me|you|he|him|she|her|it|we|us|they|them)\\b"))
+data$pron <- data$pron / data$lengthw
+```
+
+
+articles
+
+```{r}
+data$art <- sapply(texts, function(x) str_count(x, pattern = "\\b(a|an|the)\\b"))
+data$art <- data$art / data$lengthw
+```
+
+
+quantity vocabulary
+
+```{r}
+data$voc <- sapply(texts, function(x) {
+  tokens <- unlist(strsplit(x, " "))
+  freq <- table(tokens)
+  voc <- names(freq)[freq > 5]
+  length(voc)
+})
+data$voc <- data$voc / data$lengthw
+```
+
+
+formal language
+
+```{r}
+data$form <- sapply(texts, function(x) str_count(x, pattern = "(a lot of|anyways|block|break down|break up|bring in|can|come back|come in|go in|deal with|enjoyment|faithfulness|find out|from|get|get in touch with|give in|give back|bring back|go against|go ahead|go away|go before|go down|go out of|go up|hopeless|house|hungry|keep|lead to|leave out|let|link up|lively|look at|look for|look into|look like|lots of|make out|makeup|mend|need to|plus|also|point out|put in|put off|put up|set down|really big|refer to|ring up|seem|set out|set up|settle for|show|speak to|stand for|start|take away|take out|talk about|thanks|think about|think of|throw away|try out|wait for|whole|worse|say sorry|so|okay|but|all right|well|I think|to sum up|basically|ASAP|ok|totally|really|ask|tell|buy|have to|hurt|check|chance|blow up|job|dim|hopeless|whole|free|mad|clear|cheap|go up|rack up|put off|think about|in the end|)\\b"))
+
+data$form <- data$form / data$lengthw
+```
+
+
+aggressive language
+
+```{r}
+palabras <- readLines("w.txt")
+
+contar_palabras <- function(texto) {
+  contadores <- sapply(palabras, function(palabra) str_count(texto, pattern = paste0("\\b", palabra, "\\b")))
+  return(sum(contadores))
+}
+
+aggr <- sapply(texts, contar_palabras)
+
+data$aggr <- aggr
+data$aggr <- data$aggr / data$lengthw
+```
+
+
+number paragraphs
+                     
+```{r}
+data$pgf <- sapply(texts, function(x) {
+  str_count(x, "\n") + 1
+})
+```
+
+
+number sentences
+
+```{r}
+data$nstc <- sapply(texts, function(x) nsentence(x)) 
+```
+
+
+average number of words per sentence
+
+```{r}
+data$avw <- data$lengthw / data$nstc
+```
+
+
+average number of sentences per paragraph
+
+```{r}
+data$spgf <- data$nstc / data$pgf
+```
+
+
+average number of words per paragraph
+
+```{r}
+data$wpgf <- data$lengthw / data$pgf
+```
+
+
+ratio sentences to the total number of words
+
+```{r}
+data$nstcw <- data$nstc / data$lengthw
+```
+
+
+average number of paragraphs per words
+
+```{r}
+data$pgfw <- data$pgf / data$lengthw
+```
+
+
+frequency variability
+
+```{r}
+data$freqv <- sapply(texts, function(x) {
+  tokens <- unlist(strsplit(x, " "))
+  freq <- table(tokens)
+  sd(freq)
+})
+```
+
+
+relation unique words and total
+
+```{r}
+data$typew <- sapply(texts, function(x) {
+  tokens <- unlist(strsplit(x, " "))
+  freq <- table(tokens)
+  voc <- names(freq)[freq > 5]
+  length(voc) / str_count(x, boundary("word"))
+})
+```
+
+
+sum of repeat words
+
+```{r}
+data$sumrep <- sapply(texts, function(x) {
+  tokens <- unlist(strsplit(x, " "))
+  freq <- table(tokens)
+  sum(freq[freq > 1])
+})
+data$sumrep <- data$sumrep / data$lengthw
+```
+
+and
+
+```{r}
+data$and <- sapply(texts, function(x) str_count(x, pattern = "\\b(and)\\b"))
+data$and <- data$and / data$lengthw
+```
+
+the
+
+```{r}
+data$the <- sapply(texts, function(x) str_count(x, pattern = "\\b(the)\\b"))
+data$the <- data$the / data$lengthw
+```
+
+**EDA**
+
+**Categorical Variables**
+
+*Outcome*
+
+```{r}
+table_outcome <- table(data$outcome)
+prop_outcome <- prop.table(table_outcome)
+prop_outcome
+```
+
+```{r}
+ggplot(data, aes(x=outcome)) + 
+  geom_bar(fill= c("#7570B3", "#E7298A")) + 
+  xlab("Outcome") + 
+  ylab("Frequency") + 
+  ggtitle("Texts: Human (0) or Artificial Intelligence (1)")
+```
+
+*Type*
+
+```{r}
+table_type <- table(data$type)
+prop_type <- prop.table(table_type)
+prop_type
+```
+
+```{r}
+ggplot(data, aes(x=type, fill=type)) + 
+  geom_bar() + 
+  xlab("Type") + 
+  ylab("Frequency") + 
+  ggtitle("Text typology") +
+  scale_fill_brewer(palette = "Set2") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+
+*Typo*
+
+```{r}
+table_typo <- table(data$typo)
+prop_typo <- prop.table(table_typo)
+prop_typo
+```
+
+```{r}
+ggplot(data, aes(x=typo, fill=typo)) + 
+  geom_bar() + 
+  xlab("Typo") + 
+  ylab("Frequency") + 
+  ggtitle("Bar plot of Typo") +
+  scale_fill_brewer(palette = "Set2") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "none")
+```
+
+*Year*
+
+```{r}
+table_year <- table(data$year)
+prop_year <- prop.table(table_year)
+prop_year
+```
+
+```{r}
+ggplot(data, aes(x=year)) +
+geom_bar(fill="#7570B3") +
+xlab("Year") +
+ylab("Frequency") +
+ggtitle("Descriptive of the years of human texts")
+```
+
+*Pattw*
+
+```{r}
+table_pattw <- table(data$pattw)
+prop_pattw <- prop.table(table_pattw)
+prop_pattw
+```
+
+```{r}
+data$pattw <- factor(data$pattw, levels = names(sort(table(data$pattw), decreasing = TRUE)))
+
+ggplot(data, aes(x=pattw)) + 
+  geom_bar(fill="#7570B3") + 
+  xlab("Pattw") + 
+  ylab("Frequency") + 
+  ggtitle("Words with the highest frequencies in the texts") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+**Numeric variables**
+
+```{r}
+nombres <- c("lengthl", "lengthw", "pgf", "nstc", "wordl", "sentm", "sentsd", "patt", "pron", "art", "voc", "form", "aggr", "avw", "spgf", "wpgf", "nstcw", "pgfw", "freqv", "typew", "sumrep")
+
+par(mfrow = c(5, 5), mar = c(2, 2, 1, 1), oma = c(0, 0, 2, 0), las = 1, cex.axis = 0.7, cex.main = 0.8, cex.lab = 0.7, ps = 8)
+
+par(pty = "s")
+
+for (i in 1:21) {
+  boxplot(data[[nombres[i]]], col = "lightblue", main = nombres[i], ylab = "Valor")
+}
+
+mtext("Boxplots", outer = TRUE, cex = 1.5)
+```
+
+*Lengthl* 
+
+```{r}
+summary(data$lengthl)
+```
+
+```{r}
+sd(data$lengthl)
+```
+
+```{r}
+boxplot(data$lengthl)
+# dlengthl <- density(data$lengthl)
+```
+
+*Lengthw*
+
+```{r}
+summary(data$lengthw)
+```
+
+```{r}
+sd(data$lengthw)
+```
+
+```{r}
+boxplot(data$lengthw)
+# dlengthw <- density(data$lengthw)
+```
+
+*Pgf*
+
+```{r}
+summary(data$pgf)
+```
+
+```{r}
+sd(data$pgf)
+```
+
+```{r}
+boxplot(data$pgf)
+# dpgf <- density(data$pgf)
+```
+
+*Nstc*
+
+```{r}
+summary(data$nstc)
+```
+
+```{r}
+sd(data$nstc)
+```
+
+```{r}
+boxplot(data$nstc)
+# dnstc <- density(data$nstc)
+```
+
+*Wordl*
+
+```{r}
+summary(data$wordl)
+```
+
+```{r}
+sd(data$wordl)
+```
+
+```{r}
+boxplot(data$wordl)
+# dwordl <- density(data$wordl)
+```
+
+*Sentm*
+
+```{r}
+summary(data$sentm)
+```
+
+```{r}
+sd(data$sentm)
+```
+
+```{r}
+boxplot(data$sentm)
+# dsentm <- density(data$sentm)
+```
+
+*Sentsd*
+
+```{r}
+summary(data$sentsd)
+```
+
+```{r}
+sd(data$sentsd)
+```
+
+```{r}
+boxplot(data$sentsd)
+# dsentsd <- density(data$sentsd)
+```
+
+*Patt*
+
+```{r}
+summary(data$patt)
+```
+
+```{r}
+sd(data$patt)
+```
+
+```{r}
+boxplot(data$patt)
+# dpatt <- density(data$patt)
+```
+
+*Pron*
+
+```{r}
+summary(data$pron)
+```
+
+```{r}
+sd(data$pron)
+```
+
+```{r}
+boxplot(data$pron)
+# dpron <- density(data$pron)
+```
+
+*Art*
+
+```{r}
+summary(data$art)
+```
+
+```{r}
+sd(data$art)
+```
+
+```{r}
+boxplot(data$art)
+# dart <- density(data$art)
+```
+
+*Voc*
+
+```{r}
+summary(data$voc)
+```
+
+```{r}
+sd(data$voc)
+```
+
+```{r}
+boxplot(data$voc)
+# dvoc <- density(data$voc)
+```
+
+*Form*
+
+```{r}
+summary(data$form)
+```
+
+```{r}
+sd(data$form)
+```
+
+```{r}
+boxplot(data$form)
+# dform <- density(data$form)
+```
+
+*Aggr*
+
+```{r}
+summary(data$aggr)
+```
+
+```{r}
+sd(data$aggr)
+```
+
+```{r}
+boxplot(data$aggr)
+# daggr <- density(data$aggr)
+```
+
+*Avw*
+
+```{r}
+summary(data$avw)
+```
+
+```{r}
+sd(data$avw)
+```
+
+```{r}
+boxplot(data$avw)
+# davw <- density(data$avw)
+```
+
+*Spgf*
+
+```{r}
+summary(data$spgf)
+```
+
+```{r}
+sd(data$spgf)
+```
+
+```{r}
+boxplot(data$spgf)
+# dspgf <- density(data$spgf)
+```
+
+*Wpgf*
+
+```{r}
+summary(data$wpgf)
+```
+
+```{r}
+sd(data$wpgf)
+```
+
+```{r}
+boxplot(data$wpgf)
+# dwpgf <- density(data$wpgf)
+```
+
+*Nstcw*
+
+```{r}
+summary(data$nstcw)
+```
+
+```{r}
+sd(data$nstcw)
+```
+
+```{r}
+boxplot(data$nstcw)
+# dnstcw <- density(data$nstcw)
+```
+
+*Pgfw*
+
+```{r}
+summary(data$pgfw)
+```
+
+```{r}
+sd(data$pgfw)
+```
+
+```{r}
+boxplot(data$pgfw)
+# dpgfw <- density(data$pgfw)
+```
+
+*Freqv*
+
+```{r}
+summary(data$freqv)
+```
+
+```{r}
+sd(data$freqv)
+```
+
+```{r}
+boxplot(data$freqv)
+# dfreqv <- density(data$freqv)
+```
+
+*Typew*
+
+```{r}
+summary(data$typew)
+```
+
+```{r}
+sd(data$typew)
+```
+
+```{r}
+boxplot(data$typew)
+# dtypew <- density(data$typew)
+```
+
+*Sumrep*
+
+```{r}
+summary(data$sumrep)
+```
+
+```{r}
+sd(data$sumrep)
+```
+
+```{r}
+boxplot(data$sumrep)
+# dsumrep <- density(data$sumrep)
+```
+
+*And*
+
+```{r}
+summary(data$and)
+```
+
+```{r}
+sd(data$and)
+```
+
+```{r}
+boxplot(data$and)
+# dsumrep <- density(data$sumrep)
+```
+
+*The*
+
+```{r}
+summary(data$the)
+```
+
+```{r}
+sd(data$the)
+```
+
+```{r}
+boxplot(data$the)
+# dsumrep <- density(data$sumrep)
+```
+
+**Outcome and Categorical Variables**
+
+*Outcome & Type*
+
+```{r}
+out_type <- table(data$type, data$outcome)
+prop.table(out_type)
+type_chi <- chisq.test(out_type, correct = FALSE)
+print(type_chi)
+```
+
+```{r}
+ggplot(data, aes(x = as.factor(outcome), fill = type)) + 
+  geom_bar(position = "stack")
+
+ggplot(data, aes(x = as.factor(outcome), fill = type)) + 
+  geom_bar(position = "dodge")
+```
+
+*Outcome & Year*
+
+```{r}
+out_year <- table(data$year, data$outcome)
+prop.table(out_year)
+year_chi <- chisq.test(out_year, correct = FALSE, simulate.p.value = TRUE)
+print(year_chi)
+```
+
+```{r}
+ggplot(data, aes(x = as.factor(outcome), fill = as.factor(year))) + 
+  geom_bar(position = "stack")
+
+ggplot(data, aes(x = as.factor(outcome), fill = as.factor(year))) + 
+  geom_bar(position = "dodge")
+```
+
+*Outcome & Pattw*
+
+```{r}
+out_pattw <- table(data$pattw, data$outcome)
+prop.table(out_pattw)
+pattw_chi <- chisq.test(out_pattw, correct = FALSE, simulate.p.value = TRUE)
+print(pattw_chi)
+```
+
+```{r}
+library(dplyr)
+library(forcats) 
+
+top_words <- data %>% 
+  count(pattw) %>% 
+  arrange(desc(n)) %>% 
+  slice_head(n = 15) %>% 
+  pull(pattw)
+
+# filter the original data to include only the top 15 words
+data_filtered <- data %>% 
+  filter(pattw %in% top_words)
+
+ggplot(data_filtered, aes(x = pattw, fill = factor(outcome, levels = c(1, 0)), width = ifelse(pattw %in% c("word_AI", "word_human"), 1, 0.8))) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ pattw, ncol = 5, scales = "free_x") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "The 15 words with the highest frequency", y = "Frequency", fill = "Outcome") +
+  scale_fill_manual(values = c("#F8766D", "#00BFC4"), labels = c("AI", "Human")) +
+  guides(fill = guide_legend(reverse = TRUE)) 
+```
+
+**Outcome and Numeric Variables**
+
+*Outcome & Lengthl*
+
+```{r}
+boxplot(data$lengthl ~ data$outcome, 
+        main = "Boxplot Lengthl",
+        xlab = "outcome", ylab = "lengthl")
+
+ttest1 <- t.test(data$lengthl ~ data$outcome)
+print(ttest1)
+```
+
+
+*Outcome & Lengthw*
+
+```{r}
+boxplot(data$lengthw  ~ data$outcome, 
+        main = "Boxplot Lengthw",
+        xlab = "outcome", ylab = "lengthw")
+
+ttest2 <- t.test(data$lengthw ~ data$outcome)
+print(ttest2)
+```
+
+
+*Outcome & pgf*
+
+```{r}
+boxplot(data$pgf ~ data$outcome, 
+        main = "Boxplot Pgf",
+        xlab = "outcome", ylab = "pgf")
+
+ttest3 <- t.test(data$pgf ~ data$outcome)
+print(ttest3)
+```
+
+
+*Outcome & Nstc*
+
+```{r}
+boxplot(data$nstc ~ data$outcome, 
+        main = "Boxplot Nstc",
+        xlab = "outcome", ylab = "nstc")
+
+ttest4 <- t.test(data$nstc ~ data$outcome)
+print(ttest4)
+```
+
+
+*Outcome & Wordl*
+
+```{r}
+boxplot(data$wordl ~ data$outcome, 
+        main = "Boxplot Wordl",
+        xlab = "outcome", ylab = "wordl")
+
+ttest5 <- t.test(data$wordl ~ data$outcome)
+print(ttest5)
+```
+
+
+*Outcome & Sentm*
+
+```{r}
+boxplot(data$sentm ~ data$outcome, 
+        main = "Boxplot Sentm",
+        xlab = "outcome", ylab = "sentm")
+
+ttest6 <- t.test(data$sentm ~ data$outcome)
+print(ttest6)
+```
+
+
+*Outcome & Sentsd*
+
+```{r}
+boxplot(data$sentsd ~ data$outcome, 
+        main = "Boxplot Sentsd",
+        xlab = "outcome", ylab = "sentsd")
+
+ttest7 <- t.test(data$sentsd ~ data$outcome)
+print(ttest7)
+```
+
+
+*Outcome & Patt*
+
+```{r}
+boxplot(data$patt ~ data$outcome, 
+        main = "Boxplot Patt",
+        xlab = "outcome", ylab = "patt")
+
+ttest8 <- t.test(data$patt ~ data$outcome)
+print(ttest8)
+```
+
+
+*Outcome & Pron*
+
+```{r}
+boxplot(data$pron ~ data$outcome, 
+        main = "Boxplot Pron",
+        xlab = "outcome", ylab = "pron")
+
+ttest9 <- t.test(data$pron ~ data$outcome)
+print(ttest9)
+```
+
+
+*Outcome & Art*
+
+```{r}
+boxplot(data$art ~ data$outcome, 
+        main = "Boxplot Art",
+        xlab = "outcome", ylab = "art")
+
+ttest10 <- t.test(data$art ~ data$outcome)
+print(ttest10)
+```
+
+
+*Outcome & Voc*
+
+```{r}
+boxplot(data$voc ~ data$outcome, 
+        main = "Boxplot Voc",
+        xlab = "outcome", ylab = "voc")
+
+ttest11 <- t.test(data$voc ~ data$outcome)
+print(ttest11)
+```
+
+
+*Outcome & Form*
+
+```{r}
+boxplot(data$form ~ data$outcome, 
+        main = "Boxplot Form",
+        xlab = "outcome", ylab = "form")
+
+ttest12 <- t.test(data$form ~ data$outcome)
+print(ttest12)
+```
+
+
+*Outcome & Aggr*
+
+```{r}
+boxplot(data$aggr ~ data$outcome, 
+        main = "Boxplot Aggr",
+        xlab = "outcome", ylab = "aggr")
+
+ttest13 <- t.test(data$aggr ~ data$outcome)
+print(ttest13)
+```
+
+
+*Outcome & Avw*
+
+```{r}
+boxplot(data$avw ~ data$outcome, 
+        main = "Boxplot Avw",
+        xlab = "outcome", ylab = "avw")
+
+ttest14 <- t.test(data$avw ~ data$outcome)
+print(ttest14)
+```
+
+
+*Outcome & Spgf*
+
+```{r}
+boxplot(data$spgf ~ data$outcome, 
+        main = "Boxplot Spgf",
+        xlab = "outcome", ylab = "spgf")
+
+ttest15 <- t.test(data$spgf ~ data$outcome)
+print(ttest15)
+```
+
+
+*Outcome & Wpgf*
+
+```{r}
+boxplot(data$wpgf ~ data$outcome, 
+        main = "Boxplot Wpgf",
+        xlab = "outcome", ylab = "wpgf")
+
+ttest16 <- t.test(data$wpgf ~ data$outcome)
+print(ttest16)
+```
+
+
+*Outcome & Nstcw*
+
+```{r}
+boxplot(data$nstcw ~ data$outcome, 
+        main = "Boxplot Nstcw",
+        xlab = "outcome", ylab = "nstcw")
+
+ttest17 <- t.test(data$nstcw ~ data$outcome)
+print(ttest17)
+```
+
+
+*Outcome & Pgfw*
+
+```{r}
+boxplot(data$pgfw ~ data$outcome, 
+        main = "Boxplot Pgfw",
+        xlab = "outcome", ylab = "pgfw")
+
+ttest18 <- t.test(data$pgfw ~ data$outcome)
+print(ttest18)
+```
+
+
+*Outcome & Freqv*
+
+```{r}
+boxplot(data$freqv ~ data$outcome, 
+        main = "Boxplot Freqv",
+        xlab = "outcome", ylab = "freqv")
+
+ttest19 <- t.test(data$freqv ~ data$outcome)
+print(ttest19)
+```
+
+
+*Outcome & Typew*
+
+```{r}
+boxplot(data$typew ~ data$outcome, 
+        main = "Boxplot Typew",
+        xlab = "outcome", ylab = "typew")
+
+ttest20 <- t.test(data$typew ~ data$outcome)
+print(ttest20)
+```
+
+
+*Outcome & Sumrep*
+
+```{r}
+boxplot(data$sumrep ~ data$outcome, 
+        main = "Boxplot Sumrep",
+        xlab = "outcome", ylab = "sumrep")
+
+ttest21 <- t.test(data$sumrep ~ data$outcome)
+print(ttest21)
+```
+
+
+*Outcome & And*
+
+```{r}
+boxplot(data$and ~ data$outcome, 
+        main = "Boxplot And",
+        xlab = "outcome", ylab = "and")
+
+ttest22 <- t.test(data$and ~ data$outcome)
+print(ttest22)
+```
+
+
+*Outcome & The*
+
+```{r}
+boxplot(data$the ~ data$outcome, 
+        main = "Boxplot The",
+        xlab = "outcome", ylab = "the")
+
+ttest23 <- t.test(data$the ~ data$outcome)
+print(ttest23)
+```
