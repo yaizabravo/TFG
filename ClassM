@@ -197,14 +197,19 @@ confusionMatrix(rf_model)
 # Logistic Model
 
 ```{r}
-library(stepPlr)
-set.seed(1649)
+data$sumrep_100 <- 100 * data$sumrep
+data$and_100 = 100 * data$and
+```
 
-ctrl <- trainControl(method = "cv", number = 5)
-
-tuning <- expand.grid(lambda = c(10 ^ seq(-1, -4, length = 4)),
-                      cp = "bic")
-model <- train(outcome ~ ., data = data, method = "plr", tuneGrid = tuning, trControl = ctrl)
+```{r}
+library(caret)
+model = train(
+  form = outcome ~ sumrep_100 + wpgf + and_100 + typo + freqv,
+  data = data,
+  trControl = trainControl(method = "cv", number = 5),
+  method = "glm",
+  family = "binomial"
+)
 
 summary(model)
 ```
@@ -225,8 +230,8 @@ confusionMatrix(model)
 ```
 
 ```{r}
-41.2 / (41.2 + 11.2) # ppv
-41.2 / (41.2 + 8.8) # recall
+43.1 / (43.1 + 6.9) # ppv
+43.1 / (43.1 + 6.9) # recall
 ```
 
 ```{r}
