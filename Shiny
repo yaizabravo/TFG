@@ -1,0 +1,148 @@
+---
+title: "Shiny"
+author: "Yaiza Bravo"
+date: "2023-05-16"
+output: html_document
+---
+
+```{r}
+library(openNLP)
+library(lintr)
+library(sentimentr)
+library(syuzhet)
+library(quanteda)
+library(stringr)
+library(tidyr)
+library(tm)
+library(udpipe)
+library(tidytext)
+library(hunspell)
+library(wordcloud2)
+library(dplyr)
+library(SentimentAnalysis)
+library(tau)
+library(spellcheckr)
+library(spelling)
+library(politeness)
+library(ggplot2)
+library(DataExplorer)
+library(NLP)
+library(knitr)
+library(RColorBrewer)
+library(stargazer)
+```
+
+
+```{r}
+library(shiny)
+library(shinydashboard)
+library(randomForest)
+library(caret)
+
+# Define the user interface (UI)
+ui <- dashboardPage(
+  dashboardHeader(title = "AI-Detector PLUS"),
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Classification", tabName = "classification", icon = icon("file-text")),
+      menuItem("Help", tabName = "help", icon = icon("question-circle"))
+    )
+  ),
+  dashboardBody(
+    tags$head(
+      tags$style(
+        HTML("
+          .text-input {
+            height: 500px !important;
+          }
+          .prediction-value {
+            font-size: 24px;
+            line-height: 1.4;
+          }
+        ")
+      )
+    ),
+    tabItems(
+      tabItem(
+        tabName = "classification",
+        fluidPage(
+          sidebarLayout(
+            sidebarPanel(
+              tags$textarea(
+                id = "input_text",
+                class = "text-input",
+                placeholder = "Write here",
+                style = "width:100%"
+              ),
+              actionButton("predict_button", "Predict", class = "btn-primary btn-block")
+            ),
+            mainPanel(
+              box(
+                width = 10,
+                title = "Prediction",
+                valueBoxOutput("prediction_box")
+              )
+            )
+          )
+        )
+      ),
+      tabItem(
+        tabName = "help",
+        fluidPage(
+          HTML(readLines("help.html"))
+        )
+      )
+    )
+  )
+)
+
+# Define the server function
+server <- function(input, output) {
+  
+  # Load the pre-trained Random Forest model
+  load("random_forest_model.Rdata")
+  
+  # Perform prediction
+  observeEvent(input$predict_button, {
+    new_data <- data.frame(
+      lengthl = nchar(input$input_text),
+      lengthw = str_count(input$input_text, boundary("word")),
+      wordl = nchar(input$input_text) / str_count(input$input_text, boundary("word")),
+      patt = max(table(unlist(str_extract_all(as.character(input$input_text), "\\w+")))) / str_count(input$input_text, boundary("word")),
+      pron = str_count(input$input_text, pattern = "\\b(I|me|you|he|him|she|her|it|we|us|they|them)\\b") / str_count(input$input_text, boundary("word")),
+      art = str_count(input$input_text, pattern = "\\b(a|an|the)\\b") / str_count(input$input_text, boundary("word")),
+      voc = length(names(table(unlist(strsplit(input$input_text, " "))))[table(unlist(strsplit(input$input_text, " "))) > 5]) / str_count(input$input_text, boundary("word")),
+      pgf = str_count(input$input_text, "\n") + 1,
+      nstc = nsentence(input$input_text),
+      spgf = nsentence(input$input_text) / (str_count(input$input_text, "\n") + 1),
+      wpgf = str_count(input$input_text, boundary("word")) / (str_count(input$input_text, "\n") + 1),
+      nstcw = nsentence(input$input_text) / str_count(input$input_text, boundary("word")),
+      pgfw = (str_count(input$input_text, "\n") + 1) / str_count(input$input_text, boundary("word")),
+      freqv = sd(table(unlist(strsplit(input$input_text, " ")))),
+      typew = length(names(table(unlist(strsplit(input$input_text, " "))))[table(unlist(strsplit(input$input_text, " "))) > 5]) / str_count(input$input_text, boundary("word")),
+      sumrep = sum(table(unlist(strsplit(input$input_text, " ")))) / str_count(input$input_text, boundary("word")),
+      and = str_count(input$input_text, pattern = "\\b(and)\\b") / str_count(input$input_text, boundary("word")),
+      the = str_count(input$input_text, pattern = "\\b(the)\\b") / str_count(input$input_text, boundary("word"))
+    )
+    
+    # Perform the prediction using the Random Forest model
+    prediction <- predict(rf_model, newdata = new_data, type = "prob")
+    
+    # Determine the color based on the prediction value
+    color <- ifelse(prediction[2] >= 0.5, "green", "red")
+    
+    # Return the prediction box
+    output$prediction_box <- renderValueBox({
+      valueBox(
+        value = prediction[2],
+        subtitle = "Probability AI-generated text",
+        color = color,
+        width = 15
+      )
+    })
+  })
+}
+
+# Run the Shiny app
+shinyApp(ui = ui, server = server)
+```
